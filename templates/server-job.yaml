@@ -83,7 +83,17 @@ spec:
         - name: {{ $store }}-schema
           image: "{{ $.Values.admintools.image.repository }}:{{ $.Values.admintools.image.tag }}"
           imagePullPolicy: {{ $.Values.admintools.image.pullPolicy }}
-          command: ["temporal-{{ include "temporal.persistence.driver" (list $ $store) }}-tool", "setup-schema", "-v", "0.0"]
+          command:
+            - sh
+            - -c
+            - |
+              temporal-{{ include "temporal.persistence.driver" (list $ $store) }}-tool \
+              {{- if $storeConfig.sql.connectAttributes }}
+              {{- range $key, $value := $storeConfig.sql.connectAttributes }}
+              --ca {{ $key }}={{ $value }} \
+              {{- end }}
+              {{- end }}
+              setup-schema -v 0.0
           env:
             {{- if eq (include "temporal.persistence.driver" (list $ $store)) "cassandra" }}
             - name: CASSANDRA_HOST
@@ -99,6 +109,23 @@ spec:
             {{- if $storeConfig.cassandra.password }}
             - name: CASSANDRA_PASSWORD
               value: {{ $storeConfig.cassandra.password }}
+            {{- end }}
+            {{- else if eq (include "temporal.persistence.driver" (list $ $store)) "sql" }}
+            - name: SQL_HOST
+              value: {{ include "temporal.persistence.sql.host" (list $ $store) }}
+            - name: SQL_PORT
+              value: {{ include "temporal.persistence.sql.port" (list $ $store) | quote }}
+            - name: SQL_PLUGIN
+              value: {{ $storeConfig.sql.driver }}
+            - name: SQL_DATABASE
+              value: {{ $storeConfig.sql.database }}
+            {{- if $storeConfig.sql.user }}
+            - name: SQL_USER
+              value: {{ $storeConfig.sql.user }}
+            {{- end }}
+            {{- if $storeConfig.sql.password }}
+            - name: SQL_PASSWORD
+              value: {{ $storeConfig.sql.password }}
             {{- end }}
             {{- end }}
         {{- end }}
@@ -178,6 +205,22 @@ spec:
           imagePullPolicy: {{ $.Values.admintools.image.pullPolicy }}
           {{- if eq (include "temporal.persistence.driver" (list $ $store)) "cassandra" }}
           command: ['sh', '-c', 'temporal-cassandra-tool update-schema -d /etc/temporal/schema/cassandra/{{ include "temporal.persistence.schema" $store }}/versioned']
+          {{- else if eq (include "temporal.persistence.driver" (list $ $store)) "sql" }}
+          command:
+            - sh
+            - -c
+            - |
+              temporal-sql-tool \
+              {{- if $storeConfig.sql.connectAttributes }}
+              {{- range $key, $value := $storeConfig.sql.connectAttributes }}
+              --ca {{ $key }}={{ $value }} \
+              {{- end }}
+              {{- end }}
+              {{- if eq $storeConfig.sql.driver "mysql" }}
+              update -schema-dir /etc/temporal/schema/mysql/v57/{{ include "temporal.persistence.schema" $store }}/versioned
+              {{- else if eq $storeConfig.sql.driver "postgres" }}
+              update -schema-dir /etc/temporal/schema/postgresql/v96/{{ include "temporal.persistence.schema" $store }}/versioned
+              {{- end }}
           {{- end }}
           env:
             {{- if eq (include "temporal.persistence.driver" (list $ $store)) "cassandra" }}
@@ -194,6 +237,23 @@ spec:
             {{- if $storeConfig.cassandra.password }}
             - name: CASSANDRA_PASSWORD
               value: {{ $storeConfig.cassandra.password }}
+            {{- end }}
+            {{- else if eq (include "temporal.persistence.driver" (list $ $store)) "sql" }}
+            - name: SQL_HOST
+              value: {{ include "temporal.persistence.sql.host" (list $ $store) }}
+            - name: SQL_PORT
+              value: {{ include "temporal.persistence.sql.port" (list $ $store) | quote }}
+            - name: SQL_PLUGIN
+              value: {{ $storeConfig.sql.driver }}
+            - name: SQL_DATABASE
+              value: {{ $storeConfig.sql.database }}
+            {{- if $storeConfig.sql.user }}
+            - name: SQL_USER
+              value: {{ $storeConfig.sql.user }}
+            {{- end }}
+            {{- if $storeConfig.sql.password }}
+            - name: SQL_PASSWORD
+              value: {{ $storeConfig.sql.password }}
             {{- end }}
             {{- end }}
         {{- end }}
